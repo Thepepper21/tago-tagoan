@@ -54,6 +54,8 @@
 
       #blocker {
         position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
         height: 100%;
         background-color: rgba(0, 0, 0, 0.8);
@@ -194,20 +196,24 @@
       document.body.appendChild(renderer.domElement);
 
       // --- LIGHTING ---
-      const ambientLight = new THREE.AmbientLight(0x707070, 1.0); // Brighter ambient light
+      const ambientLight = new THREE.AmbientLight(0xaaaaaa, 1.5); // Much brighter ambient light
       scene.add(ambientLight);
 
       // Add some point lights for better visibility
-      const light1 = new THREE.PointLight(0x00aaff, 0.5, 20);
+      const light1 = new THREE.PointLight(0x00ddff, 1.2, 30);
       light1.position.set(20, 10, 20);
       scene.add(light1);
 
-      const light2 = new THREE.PointLight(0xffaa00, 0.3, 30);
+      const light2 = new THREE.PointLight(0xffcc00, 0.8, 35);
       light2.position.set(-20, 15, -20);
       scene.add(light2);
 
+      const light3 = new THREE.PointLight(0xff00ff, 0.6, 25);
+      light3.position.set(0, 12, 0);
+      scene.add(light3);
+
       // Adjust fog for better visibility
-      scene.fog = new THREE.FogExp2(0x111122, 0.03);
+      scene.fog = new THREE.FogExp2(0x1a1a2e, 0.02);
 
       // --- CONTROLS ---
       const controls = new PointerLockControls(camera, document.body);
@@ -320,12 +326,14 @@
       const wallSize = 4;
       const wallHeight = 5;
       const wallMaterial = new THREE.MeshStandardMaterial({
-        color: 0x555555,
-        roughness: 0.8,
+        color: 0x8888aa,
+        roughness: 0.7,
+        metalness: 0.3,
       });
       const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.9,
+        color: 0x556677,
+        roughness: 0.8,
+        metalness: 0.2,
       });
       const walls = new THREE.Group();
       const terminals = [];
@@ -397,18 +405,26 @@
       // --- THE WARDEN (AI Hunter) ---
       const wardenGeo = new THREE.CapsuleGeometry(0.4, 2.5, 4, 16);
       const wardenMat = new THREE.MeshStandardMaterial({
-        color: 0x1a1a1a,
-        emissive: 0x000000,
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 0.8,
         roughness: 0.2,
+        metalness: 0.5,
       });
       const warden = new THREE.Mesh(wardenGeo, wardenMat);
       warden.castShadow = true;
       warden.position.set(0, 1.65, 0);
 
-      const wardenSensor = new THREE.PointLight(0x00ffff, 5, 15);
+      const wardenSensor = new THREE.PointLight(0xff0000, 8, 20);
       wardenSensor.castShadow = true;
       wardenSensor.position.y = 1.0;
       warden.add(wardenSensor);
+
+      // Add a bright spotlight on the warden for maximum visibility
+      const wardenSpotlight = new THREE.SpotLight(0xff0000, 3, 30, Math.PI / 4);
+      wardenSpotlight.position.set(0, 10, 0);
+      wardenSpotlight.target = warden;
+      scene.add(wardenSpotlight);
       scene.add(warden);
 
       let wardenState = "PATROL"; // PATROL, HUNT
@@ -557,8 +573,9 @@
           target = playerPos;
           speed = wardenHuntSpeed;
           wardenSensor.color.set(0xff0000);
-          wardenSensor.intensity = 10;
-          warden.material.emissive.set(0x330000);
+          wardenSensor.intensity = 15;
+          warden.material.emissive.set(0xff0000);
+          warden.material.emissiveIntensity = 1.5;
 
           // Heartbeat effect
           const heartbeatSpeed =
@@ -576,9 +593,10 @@
           // PATROL
           target = wardenPath[currentPathIndex];
           speed = wardenSpeed;
-          wardenSensor.color.set(0x00ffff);
-          wardenSensor.intensity = 5;
-          warden.material.emissive.set(0x000000);
+          wardenSensor.color.set(0xffff00);
+          wardenSensor.intensity = 8;
+          warden.material.emissive.set(0xff6600);
+          warden.material.emissiveIntensity = 0.6;
 
           if (wardenPos.distanceTo(target) < 1) {
             currentPathIndex = (currentPathIndex + 1) % wardenPath.length;
@@ -699,7 +717,7 @@
         playerVelocity.z -= playerVelocity.z * 10.0 * delta;
 
         playerDirection.z = Number(moveForward) - Number(moveBackward);
-        playerDirection.x = Number(moveRight) - Number(moveLeft);
+        playerDirection.x = Number(moveLeft) - Number(moveRight);
         playerDirection.normalize();
 
         if (moveForward || moveBackward)
