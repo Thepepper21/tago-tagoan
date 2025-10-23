@@ -194,8 +194,20 @@
       document.body.appendChild(renderer.domElement);
 
       // --- LIGHTING ---
-      const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // soft dark ambient
+      const ambientLight = new THREE.AmbientLight(0x707070, 1.0); // Brighter ambient light
       scene.add(ambientLight);
+
+      // Add some point lights for better visibility
+      const light1 = new THREE.PointLight(0x00aaff, 0.5, 20);
+      light1.position.set(20, 10, 20);
+      scene.add(light1);
+
+      const light2 = new THREE.PointLight(0xffaa00, 0.3, 30);
+      light2.position.set(-20, 15, -20);
+      scene.add(light2);
+
+      // Adjust fog for better visibility
+      scene.fog = new THREE.FogExp2(0x111122, 0.03);
 
       // --- CONTROLS ---
       const controls = new PointerLockControls(camera, document.body);
@@ -414,18 +426,24 @@
       const wardenRaycaster = new THREE.Raycaster();
 
       // --- THE RUNNER (Additional Running Enemy) ---
+      // Runner setup
       const runnerTexture = new THREE.TextureLoader().load('https://www.vhv.rs/dpng/d/485-4854988_running-sprite-sheet-png-graphic-transparent-stock-2d.png');
       runnerTexture.magFilter = THREE.NearestFilter;
       runnerTexture.minFilter = THREE.NearestFilter;
-      const runnerMaterial = new THREE.MeshBasicMaterial({ map: runnerTexture, transparent: true, side: THREE.DoubleSide });
-      const runnerGeo = new THREE.PlaneGeometry(2, 3); // Adjust size to fit sprite
+      const runnerMaterial = new THREE.MeshBasicMaterial({ 
+        map: runnerTexture, 
+        transparent: true, 
+        side: THREE.DoubleSide 
+      });
+      const runnerGeo = new THREE.PlaneGeometry(2, 3);
       const runner = new THREE.Mesh(runnerGeo, runnerMaterial);
       scene.add(runner);
-      runner.position.set(10, 1.5, 10); // Start position
+      runner.position.set(10, 1.5, 10);
 
+      // Runner behavior variables
       let runnerState = "PATROL";
-      const runnerSpeed = 4.0;
-      const runnerHuntSpeed = 8.0;
+      const runnerSpeed = 1.5; // Reduced patrol speed
+      const runnerHuntSpeed = 3.0; // Reduced hunt speed
       const runnerPath = [
         new THREE.Vector3(-10, 1.5, -10),
         new THREE.Vector3(10, 1.5, -10),
@@ -436,10 +454,15 @@
       runner.position.copy(runnerPath[0]);
       const runnerRaycaster = new THREE.Raycaster();
       let runnerFrame = 0;
-      const numFrames = 10;
-      const numRows = 6;
+      const numFrames = 8;
+      const numRows = 1;
+      let lastSightCheck = 0;
+      const sightCheckInterval = 1.0; // Reduced sight check frequency
+      let lastHuntTime = 0;
+      const maxHuntDuration = 4.0; // Maximum time in seconds the runner will chase
 
-      const runnerSensor = new THREE.PointLight(0x00ffff, 5, 15);
+      // Runner light effect
+      const runnerSensor = new THREE.PointLight(0x00ffff, 3, 10);
       runnerSensor.castShadow = true;
       runnerSensor.position.y = 1.0;
       runner.add(runnerSensor);
@@ -579,70 +602,94 @@
         const playerPos = controls.getObject().position;
         const runnerPos = runner.position;
         const distanceToPlayer = runnerPos.distanceTo(playerPos);
+        const now = Date.now() / 1000; // Current time in seconds
 
-        // Raycast for line of sight
-        runnerRaycaster.set(
-          runnerPos,
-          playerPos.clone().sub(runnerPos).normalize()
-        );
-        const intersects = runnerRaycaster.intersectObjects(
-          walls.children,
-          false
-        );
-        const hasLineOfSight =
-          intersects.length === 0 || intersects[0].distance > distanceToPlayer;
+        // Only check line of sight periodically to reduce difficulty
+        let hasLineOfSight = false;
+        if (now - lastSightCheck > sightCheckInterval) {
+          runnerRaycaster.set(
+            runnerPos,
+            playerPos.clone().sub(runnerPos).normalize()
+          );
+          const intersects = runnerRaycaster.intersectObjects(walls.children, false);
+          hasLineOfSight = intersects.length === 0 || intersects[0].distance > distanceToPlayer;
+          lastSightCheck = now;
+        }
 
         // State Transitions
-        if (hasLineOfSight && distanceToPlayer < 20) {
-          runnerState = "HUNT";
-        } else if (distanceToPlayer > 25) {
-          runnerState = "PATROL";
+        if (runnerState === "PATROL") {
+          if (hasLineOfSight && distanceToPlayer < 15) { // Reduced detection range
+            runnerState = "HUNT";
+            lastHuntTime = now;
+          }
+        } else { // HUNT state
+          // Return to patrol if player escapes or max hunt time reached
+          if (distanceToPlayer > 25 || now - lastHuntTime > maxHuntDuration) {
+            runnerState = "PATROL";
+          }
         }
 
         let target;
         let speed;
+        let frameRate;
 
         // State Actions
         if (runnerState === "HUNT") {
           target = playerPos;
-          speed = runnerHuntSpeed;
-          runnerSensor.color.set(0xff0000);
-          runnerSensor.intensity = 10;
-
+          speed = runnerHuntSpeed * (0.8 + Math.random() * 0.4); // Add some randomness to speed
+          runnerSensor.color.set(0xff3333); // Softer red when hunting
+          runnerSensor.intensity = 8;
+          frameRate = 12; // Slightly slower animation when hunting
         } else {
           // PATROL
           target = runnerPath[currentPathIndexRunner];
-          speed = runnerSpeed;
-          runnerSensor.color.set(0x00ffff);
-          runnerSensor.intensity = 5;
+          speed = runnerSpeed * (0.7 + Math.random() * 0.6); // More random patrol speed
+          runnerSensor.color.set(0x00aaff); // Brighter blue when patrolling
+          runnerSensor.intensity = 4;
+          frameRate = 4 + Math.sin(now * 2) * 2; // Subtle animation variation
 
-          if (runnerPos.distanceTo(target) < 1) {
+          if (runnerPos.distanceTo(target) < 2) {
             currentPathIndexRunner = (currentPathIndexRunner + 1) % runnerPath.length;
           }
         }
 
-        runner.lookAt(camera.position); // Billboard
-
-        runner.position.add(
-          runner
-            .getWorldDirection(new THREE.Vector3())
-            .multiplyScalar(speed * delta)
+        // Smooth rotation towards target
+        const targetDirection = new THREE.Vector3();
+        targetDirection.subVectors(target, runnerPos).normalize();
+        const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, -1), // Default forward direction
+          new THREE.Vector3(targetDirection.x, 0, targetDirection.z).normalize()
         );
+        runner.quaternion.slerp(targetQuaternion, 5.0 * delta);
+
+        // Move runner
+        const moveDirection = new THREE.Vector3(0, 0, -1)
+          .applyQuaternion(runner.quaternion)
+          .multiplyScalar(speed * delta);
+        
+        runner.position.add(moveDirection);
 
         // Animation
         runnerMaterial.map.repeat.set(1 / numFrames, 1 / numRows);
-        const frameRate = runnerState === "HUNT" ? 15 : 5;
         runnerFrame += delta * frameRate;
         const currentFrame = Math.floor(runnerFrame) % numFrames;
-        const row = 0; // Use row 0 for simplicity
+        const row = 0;
         runnerMaterial.map.offset.set(
           currentFrame / numFrames,
           (numRows - 1 - row) / numRows
         );
 
-        // Game Over Check
-        if (distanceToPlayer < 1.5) {
-          gameOver();
+        // Game Over Check - More forgiving collision
+        if (distanceToPlayer < 2.0) {
+          // Only trigger game over if facing the player
+          const directionToPlayer = new THREE.Vector3()
+            .subVectors(playerPos, runnerPos)
+            .normalize();
+          const dot = runner.getWorldDirection(new THREE.Vector3()).dot(directionToPlayer);
+          
+          if (dot > 0.5) { // Runner must be facing somewhat towards player
+            gameOver();
+          }
         }
       }
 
